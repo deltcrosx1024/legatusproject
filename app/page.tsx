@@ -237,7 +237,7 @@ export default function Home() {
             </div>
             <div className="rounded-[4px] border border-[#353535] bg-[#1e1e1e] p-4">
               <p className="text-[10px] tracking-[0.18em] text-[#d4d4d4] lowercase" style={{ fontFamily: "var(--font-novecento-bld), sans-serif" }}>
-                uptime
+                UPTIME
               </p>
               <p
                 className="mt-3 text-xl font-semibold tracking-[-0.03em] lowercase text-[#f1f2ff]"
