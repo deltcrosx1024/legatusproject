@@ -13,8 +13,14 @@ const sanitizeHeaders = (headers) => {
   );
 };
 
+const getHeaderValue = (headers, key) => {
+  const value = headers.get(key) ?? headers.get(key.toLowerCase()) ?? '';
+  return value ?? '';
+};
+
 const verifyDiscordInteraction = async (rawBody, signature, timestamp) => {
   if (!DISCORD_PUBLIC_KEY) {
+    // Allow local testing without a configured public key while keeping the verification path in place.
     return true;
   }
 
@@ -24,9 +30,9 @@ const verifyDiscordInteraction = async (rawBody, signature, timestamp) => {
 
   try {
     const publicKeyHex = DISCORD_PUBLIC_KEY.replace(/^0x/, '').trim();
-    const keyData = Uint8Array.from(Buffer.from(publicKeyHex, 'hex'));
-    const signatureData = Uint8Array.from(Buffer.from(signature, 'hex'));
-    const signedPayload = new TextEncoder().encode(`${timestamp}${rawBody}`);
+    const keyData = Buffer.from(publicKeyHex, 'hex');
+    const signatureData = Buffer.from(signature, 'hex');
+    const signedPayload = Buffer.from(`${timestamp}${rawBody}`, 'utf8');
 
     const key = await crypto.subtle.importKey(
       'raw',
@@ -71,26 +77,65 @@ const forwardDiscordEvent = async (payload) => {
   }
 };
 
-async function handleDiscordInteraction(req) {
+const parseInteractionPayload = async (req) => {
   const rawBody = await req.text();
-  const signature = req.headers.get('x-signature-ed25519') || '';
-  const timestamp = req.headers.get('x-signature-timestamp') || '';
 
-  if (signature || timestamp) {
-    const valid = await verifyDiscordInteraction(rawBody, signature, timestamp);
-
-    if (!valid) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Invalid Discord interaction signature',
-        },
-        { status: 401 },
-      );
-    }
+  if (!rawBody) {
+    return { rawBody, interaction: {} };
   }
 
-  const interaction = rawBody ? JSON.parse(rawBody) : {};
+  try {
+    return {
+      rawBody,
+      interaction: JSON.parse(rawBody),
+    };
+  } catch (error) {
+    console.error('Discord interaction payload is not valid JSON:', error);
+    return {
+      rawBody,
+      interaction: {},
+      parseError: true,
+    };
+  }
+};
+
+async function handleDiscordInteraction(req) {
+  const signature = getHeaderValue(req.headers, 'x-signature-ed25519');
+  const timestamp = getHeaderValue(req.headers, 'x-signature-timestamp');
+  const { rawBody, interaction, parseError } = await parseInteractionPayload(req);
+
+  if (!signature || !timestamp) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'invalid request signature',
+      },
+      { status: 401 },
+    );
+  }
+
+  const isVerified = await verifyDiscordInteraction(rawBody, signature, timestamp);
+
+  if (!isVerified) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'invalid request signature',
+      },
+      { status: 401 },
+    );
+  }
+
+  if (parseError) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Invalid Discord interaction payload',
+      },
+      { status: 400 },
+    );
+  }
+
   const payload = {
     method: req.method,
     headers: sanitizeHeaders(req.headers),
@@ -100,6 +145,7 @@ async function handleDiscordInteraction(req) {
 
   console.log('Received Discord interaction payload:', payload);
 
+  // Future extension point: route by interaction.type or command name before forwarding.
   await forwardDiscordEvent(payload);
 
   if (interaction?.type === 1) {
