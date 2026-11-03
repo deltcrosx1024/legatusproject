@@ -20,6 +20,39 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Discord API bridge
+
+The Discord routes are separate:
+
+- `POST /api/discord` receives signed Discord interactions. Register a `/link` slash command to let a member start account linking; the command replies ephemerally with a short-lived OAuth link.
+- `GET /api/discord/callback` exchanges the OAuth code, verifies the member identity against one-time `state`, and stores the link in Supabase. OAuth tokens are encrypted before storage and are never returned to the browser. The callback optionally notifies `DISCORD_OAUTH_FORWARD_URL` with link metadata, not tokens. Set `DISCORD_REDIRECT_URI` to the exact callback URL registered in Discord, without a trailing slash.
+- `POST /api/discord/webhook` receives authenticated integration events and forwards them to `DISCORD_WEBHOOK_FORWARD_URL`. Set `DISCORD_WEBHOOK_SECRET`; callers must send it as a Bearer token.
+
+Configure `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_URI` for OAuth. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `OAUTH_TOKEN_ENCRYPTION_KEY` in server-only environment settings. `SUPABASE_SERVICE_ROLE_KEY` is accepted as a legacy fallback. Generate the encryption key with:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Apply [`supabase/migrations/20261103000000_account_linking.sql`](./supabase/migrations/20261103000000_account_linking.sql) to the Supabase project before using `/link`. Keep the secret and encryption keys out of `NEXT_PUBLIC_*` variables. Tokens are encrypted in the database with AES-256-GCM. The generic provider-link table is ready for future Twitch OAuth, but Twitch authorization is not implemented yet.
+
+Forwarding URLs fall back to `DISCORD_FORWARD_URL`, then `CALLBACK_FORWARD_URL`. Configure trusted HTTPS destinations.
+
+Webhook requests use this versioned envelope; `source` can identify Discord, Twitch, or another integration, and `sessionId`/`state` can correlate related events without local session storage:
+
+```json
+{
+  "version": 1,
+  "source": "discord",
+  "event": "chat.message",
+  "state": "optional-oauth-correlation-value",
+  "sessionId": "optional-session-id",
+  "data": {
+    "content": "Hello"
+  }
+}
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
