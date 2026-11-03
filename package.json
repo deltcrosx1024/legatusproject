@@ -12,6 +12,7 @@
   "dependencies": {
     "@ngrok/nextjs": "^0.1.0",
     "@ngrok/ngrok": "^1.7.0",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "axios": "^1.20.0",
     "body-parser": "^2.4.0",

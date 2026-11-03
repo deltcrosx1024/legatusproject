@@ -154,105 +154,48 @@ export async function GET(req) {
     );
   }
 
-  let matchingStates;
-  let stateError;
-
-  try {
-    ({ data: matchingStates, error: stateError } = await supabase.rpc(
-      "consume_oauth_state",
-      {
-        p_state_hash: hashOAuthState(state),
-        p_provider: "discord",
-        p_discord_user_id: discordUser.id,
-      },
-    ));
-  } catch (error) {
-    console.error(
-      "Unable to validate Discord OAuth state:",
-      error instanceof Error ? error.message : error,
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Unable to validate Discord OAuth state.",
-      },
-      { status: 500 },
-    );
-  }
-
-  if (stateError) {
-    console.error(
-      "Unable to validate Discord OAuth state:",
-      stateError.message,
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Unable to validate Discord OAuth state.",
-      },
-      { status: 500 },
-    );
-  }
-
-  if (!matchingStates?.length) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Discord OAuth state is invalid, expired, or already used.",
-      },
-      { status: 400 },
-    );
-  }
-
   const profile = createUserSummary(discordUser);
   const expiresIn = Number(token.expires_in);
-  let linkError;
 
   try {
-    ({ error: linkError } = await supabase
-      .from("account_provider_links")
-      .upsert(
+    const { data: linked, error } = await supabase.rpc("complete_oauth_link", {
+      p_state_hash: hashOAuthState(state),
+      p_provider: "discord",
+      p_discord_user_id: discordUser.id,
+      p_provider_user_id: discordUser.id,
+      p_username: discordUser.username,
+      p_profile: profile,
+      p_oauth_token_encrypted: encryptOAuthToken(token),
+      p_token_expires_at:
+        Number.isFinite(expiresIn) && expiresIn > 0
+          ? new Date(Date.now() + expiresIn * 1000).toISOString()
+          : null,
+      p_scopes: typeof token.scope === "string" ? token.scope.split(/\s+/) : [],
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (!linked) {
+      return NextResponse.json(
         {
-          discord_user_id: discordUser.id,
-          provider: "discord",
-          provider_user_id: discordUser.id,
-          username: discordUser.username,
-          profile,
-          oauth_token_encrypted: encryptOAuthToken(token),
-          token_expires_at:
-            Number.isFinite(expiresIn) && expiresIn > 0
-              ? new Date(Date.now() + expiresIn * 1000).toISOString()
-              : null,
-          scopes:
-            typeof token.scope === "string" ? token.scope.split(/\s+/) : [],
-          updated_at: new Date().toISOString(),
+          success: false,
+          message: "Discord OAuth state is invalid, expired, or already used.",
         },
-        { onConflict: "discord_user_id,provider" },
-      ));
+        { status: 400 },
+      );
+    }
   } catch (error) {
     console.error(
-      "Unable to save Discord account link:",
+      "Unable to atomically complete Discord account linking:",
       error instanceof Error ? error.message : error,
     );
 
     return NextResponse.json(
       {
         success: false,
-        message: "Discord account link could not be saved.",
-      },
-      { status: 500 },
-    );
-  }
-
-  if (linkError) {
-    console.error("Unable to save Discord account link:", linkError.message);
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Discord account link could not be saved.",
+        message: "Discord account linking could not be completed.",
       },
       { status: 500 },
     );

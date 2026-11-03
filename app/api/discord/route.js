@@ -119,20 +119,11 @@ const createLinkCommandResponse = async (interaction) => {
       Date.now() + DISCORD_OAUTH_STATE_TTL_SECONDS * 1000,
     ).toISOString();
     const supabase = getSupabaseAdmin();
-    const { error: cleanupError } = await supabase
-      .from("oauth_states")
-      .delete()
-      .lt("expires_at", new Date().toISOString());
-
-    if (cleanupError) {
-      throw cleanupError;
-    }
-
-    const { error } = await supabase.from("oauth_states").insert({
-      state_hash: hashOAuthState(state),
-      provider: "discord",
-      discord_user_id: discordUserId,
-      expires_at: expiresAt,
+    const { error } = await supabase.rpc("create_oauth_state", {
+      p_state_hash: hashOAuthState(state),
+      p_provider: "discord",
+      p_discord_user_id: discordUserId,
+      p_expires_at: expiresAt,
     });
 
     if (error) {

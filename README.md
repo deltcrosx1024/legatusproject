@@ -34,7 +34,7 @@ Configure `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DISCORD_REDIRECT_UR
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Apply [`supabase/migrations/20261103000000_account_linking.sql`](./supabase/migrations/20261103000000_account_linking.sql) to the Supabase project before using `/link`. Keep the secret and encryption keys out of `NEXT_PUBLIC_*` variables. Tokens are encrypted in the database with AES-256-GCM. The generic provider-link table is ready for future Twitch OAuth, but Twitch authorization is not implemented yet.
+Apply the SQL files in [`supabase/migrations/`](./supabase/migrations/) to the Supabase project before using `/link`. These create locked-down, server-only tables and RPCs for one-time OAuth state and atomic account linking. Keep the secret and encryption keys out of `NEXT_PUBLIC_*` variables. Tokens are encrypted in the database with AES-256-GCM. The generic provider-link table is ready for future Twitch OAuth, but Twitch authorization is not implemented yet.
 
 Forwarding URLs fall back to `DISCORD_FORWARD_URL`, then `CALLBACK_FORWARD_URL`. Configure trusted HTTPS destinations.
 
